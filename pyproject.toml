@@ -5,6 +5,7 @@ description = "Bot to save restricted content from telegram channels and groups"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.15.1",
     "kurigram==2.1.39",
     "loguru==0.7.2",
     "psycopg2-binary>=2.9.10",

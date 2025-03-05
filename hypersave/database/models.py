@@ -23,12 +23,10 @@ class User(Base):
     session_string = Column(Text)
     authorized = Column(Boolean, default=False)
 
-    def __init__(self, t_id, t_name, t_username, session_string, authorized):
+    def __init__(self, t_id, t_name, t_username):
         self.t_id = t_id
         self.t_name = t_name
         self.t_username = t_username
-        self.session_string = session_string
-        self.authorized = authorized
 
     def __str__(self):
         name = None if self.t_name == "" else self.t_name

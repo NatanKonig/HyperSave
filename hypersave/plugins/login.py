@@ -17,12 +17,17 @@ from pyrogram.types import Message
 from hypersave.bot import ClientBot
 from hypersave.logger import logger
 from hypersave.settings import Settings
+from hypersave.database.user_repository import UserRepository
+from hypersave.utils.message_utils import save_message_info
+
 
 settings = Settings()
+user_repository = UserRepository()
 
 
 @ClientBot.on_message(filters.command("login") & filters.private)
 async def generate_session(client: Client, message: Message):
+    save_message_info(message)
     user_id = message.chat.id
 
     try:
@@ -33,14 +38,14 @@ async def generate_session(client: Client, message: Message):
             client,
             message,
             timeout=180,
-            error_message="❌ Tempo limite excedido para o envio do número de telefone. Reinicie o processo de login."
+            error_message="❌ Tempo limite excedido para o envio do número de telefone. Reinicie o processo de login.",
         )
 
         phone_number = number_response.text.strip().replace(" ", "")
 
         client_user = Client(f"session_{user_id}", settings.api_id, settings.api_hash)
         await client_user.connect()
-        
+
         try:
             code_info = await client_user.send_code(phone_number)
             await message.reply("📲 Enviando código de verificação...")
@@ -54,13 +59,14 @@ async def generate_session(client: Client, message: Message):
         phone_code_hash = code_info.phone_code_hash
 
         await message.reply(
-            "📩 Verifique seu Telegram e insira o código recebido. \n\n**INSIRA NESTE MODELO A SEGUIR**: \nEx: Seu codigo é **12345** então vc deve enviar: **AB1 CD2 EF3 GH4 IJ5**\n\nEx 2: Seu codigo é **36139** então vc deve enviar: **AB3 CD6 EF1 GH3 IJ9**"
+            "📩 Verifique seu Telegram e insira o código recebido. \n\n**INSIRA NESTE MODELO A SEGUIR**: " 
+            "\nEx: Seu codigo é **12345** então vc deve enviar: **AB1 CD2 EF3 GH4 IJ5**\n\nEx 2: Seu codigo é **36139** então vc deve enviar: **AB3 CD6 EF1 GH3 IJ9**"
         )
         otp_response = await wait_for_response(
             client,
             message,
             timeout=180,
-            error_message="❌ Tempo limite excedido para o envio do código de verificação. Reinicie o processo de login."
+            error_message="❌ Tempo limite excedido para o envio do código de verificação. Reinicie o processo de login.",
         )
 
         phone_code = otp_response.text.strip()
@@ -86,7 +92,7 @@ async def generate_session(client: Client, message: Message):
                 client,
                 message,
                 timeout=180,
-                error_message="❌ Tempo limite excedido para o envio da senha de verificação de duas etapas. Reinicie o processo de login."
+                error_message="❌ Tempo limite excedido para o envio da senha de verificação de duas etapas. Reinicie o processo de login.",
             )
 
             try:
@@ -98,12 +104,12 @@ async def generate_session(client: Client, message: Message):
                 return
 
         string_session = await client_user.export_session_string()
-        logger.info(f"Sessão gerada para {phone_number}: {string_session}")
+        user_repository.add_string_session(user_id, string_session)
 
         await client_user.terminate()
         await message.reply("✅ Login bem-sucedido!")
     except asyncio.TimeoutError:
-        return # Error message already sent
+        return  # Error message already sent
     except Exception as e:
         await message.reply(
             f"❌ Erro inesperado, tente novamente mais tarde, ou entre em contato com o criador do bot."
