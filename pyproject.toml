@@ -7,8 +7,11 @@ requires-python = ">=3.12"
 dependencies = [
     "kurigram==2.1.39",
     "loguru==0.7.2",
+    "psycopg2-binary>=2.9.10",
     "pydantic>=2.10.6",
     "pydantic-settings>=2.8.1",
+    "sqlalchemy>=2.0.38",
+    "tgcrypto>=1.2.5",
     "uvloop==0.20.0",
 ]
 
@@ -18,3 +21,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["/hypersave"]
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "isort>=6.0.1",
+]

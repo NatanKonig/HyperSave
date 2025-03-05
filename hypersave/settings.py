@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     bot_token: str
     api_id: int
     api_hash: str
-    target_chat: int
-    target_channel: list[int] | int
+    database_url: str
+    private_group_id: int
     admin_ids: list[int] | int
 
     class Config:
@@ -28,13 +28,13 @@ class Settings(BaseSettings):
             return [value]
         return value
 
-    @field_validator("target_channel", mode="before")
-    def parse_target_channel(cls, value):
-        if isinstance(value, str):
-            if "," in value:
-                return [int(id.strip()) for id in value.split(",")]
-            else:
-                return [int(value)]
-        elif isinstance(value, int):
-            return [value]
-        return value
+    # @field_validator("private_group_id", mode="before")
+    # def parse_target_channel(cls, value):
+    #     if isinstance(value, str):
+    #         if "," in value:
+    #             return [int(id.strip()) for id in value.split(",")]
+    #         else:
+    #             return [int(value)]
+    #     elif isinstance(value, int):
+    #         return [value]
+    #     return value
