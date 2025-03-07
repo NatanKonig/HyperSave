@@ -27,7 +27,7 @@ user_repository = UserRepository()
 
 @ClientBot.on_message(filters.command("login") & filters.private)
 async def generate_session(client: Client, message: Message):
-    save_message_info(message)
+    await save_message_info(message)
     user_id = message.chat.id
 
     try:
@@ -106,8 +106,11 @@ async def generate_session(client: Client, message: Message):
         string_session = await client_user.export_session_string()
         user_repository.add_string_session(user_id, string_session)
 
-        await client_user.terminate()
+        await asyncio.sleep(1)
+        await client_user.disconnect()
         await message.reply("✅ Login bem-sucedido!")
+    except FloodWait as e:
+        await message.reply(f"❌ Aguarde {e.value} segundos antes de tentar novamente.")
     except asyncio.TimeoutError:
         return  # Error message already sent
     except Exception as e:

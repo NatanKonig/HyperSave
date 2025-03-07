@@ -22,6 +22,7 @@ class ClientBot(Client):
             api_hash=settings.api_hash,
             bot_token=settings.bot_token,
             plugins=dict(root="hypersave/plugins/"),
+            workdir="./sessions/",
         )
 
 

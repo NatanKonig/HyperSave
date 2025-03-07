@@ -71,6 +71,15 @@ wheels = [
 ]
 
 [[package]]
+name = "convopyro"
+version = "0.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/76/52/f7bded3158d6f2a912ccb636e95b45dd653f2360398f35cb5e0662bf07c0/convopyro-0.5.tar.gz", hash = "sha256:26bbebc90d48b8f96da371df9246cd63545273c2f9af0bd835b1e1119d4e5f90", size = 5475 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/14/e0/f8d2c09dd5810c48cf3dafb0bad03779da5039cf0beaa5c19ca06b414a6e/convopyro-0.5-py3-none-any.whl", hash = "sha256:2db5c99e460c47779241a9a876cbc5254fa838e32d47770abafc086fe8835383", size = 5881 },
+]
+
+[[package]]
 name = "greenlet"
 version = "3.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -109,6 +118,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
+    { name = "convopyro" },
     { name = "kurigram" },
     { name = "loguru" },
     { name = "psycopg2-binary" },
@@ -128,6 +138,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.15.1" },
+    { name = "convopyro", specifier = ">=0.5" },
     { name = "kurigram", specifier = "==2.1.39" },
     { name = "loguru", specifier = "==0.7.2" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
