@@ -26,6 +26,16 @@ class UserRepository(BaseRepository):
             logger.error(f"Error adding session string: {e}")
             return False
 
+    def get_string_session(self, t_id):
+        try:
+            user = self.get_by_id(t_id)
+            if not user:
+                return None
+            return user.session_string
+        except Exception as e:
+            logger.error(f"Error getting session string: {e}")
+            return None
+
     def get_all(self):
         try:
             return self._session.query(User).all()

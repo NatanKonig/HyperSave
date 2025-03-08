@@ -15,11 +15,10 @@ from pyrogram.errors import (
 from pyrogram.types import Message
 
 from hypersave.bot import ClientBot
+from hypersave.database.user_repository import UserRepository
 from hypersave.logger import logger
 from hypersave.settings import Settings
-from hypersave.database.user_repository import UserRepository
 from hypersave.utils.message_utils import save_message_info
-
 
 settings = Settings()
 user_repository = UserRepository()
@@ -29,6 +28,9 @@ user_repository = UserRepository()
 async def generate_session(client: Client, message: Message):
     await save_message_info(message)
     user_id = message.chat.id
+    if user_repository.get_string_session(user_id):
+        await message.reply("Você já está logado.")
+        return
 
     try:
         await message.reply(
@@ -59,7 +61,7 @@ async def generate_session(client: Client, message: Message):
         phone_code_hash = code_info.phone_code_hash
 
         await message.reply(
-            "📩 Verifique seu Telegram e insira o código recebido. \n\n**INSIRA NESTE MODELO A SEGUIR**: " 
+            "📩 Verifique seu Telegram e insira o código recebido. \n\n**INSIRA NESTE MODELO A SEGUIR**: "
             "\nEx: Seu codigo é **12345** então vc deve enviar: **AB1 CD2 EF3 GH4 IJ5**\n\nEx 2: Seu codigo é **36139** então vc deve enviar: **AB3 CD6 EF1 GH3 IJ9**"
         )
         otp_response = await wait_for_response(

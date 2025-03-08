@@ -12,6 +12,7 @@ build/
 develop-eggs/
 dist/
 downloads/
+lives/
 eggs/
 .eggs/
 lib/
@@ -173,3 +174,11 @@ cython_debug/
 # pyrogram session file
 *.session
 *.session-journal
+
+*.mp4
+*.mp3
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
