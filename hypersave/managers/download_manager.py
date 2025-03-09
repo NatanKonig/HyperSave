@@ -111,11 +111,17 @@ class DownloadManager:
                 output_path=None
             )
             
+            # Store last progress text to avoid duplicate updates
+            task.last_progress_text = "⏳ Download added to queue..."
+            
             # Put task in queue
             await self.download_queue.put(task)
             
             # Update status message
-            await status_message.edit_text(f"🔄 Download queued. Position: {self.download_queue.qsize()}")
+            queue_text = f"🔄 Download queued. Position: {self.download_queue.qsize()}"
+            if queue_text != task.last_progress_text:
+                await status_message.edit_text(queue_text)
+                task.last_progress_text = queue_text
             
             return task_id
             
@@ -155,12 +161,18 @@ class DownloadManager:
                 source_message = await task.user_client.get_messages(task.chat_id, task.message_id)
                 
                 if source_message.media_group_id:
-                    # Handle media group
+                    # Handle media group - vamos preservar informação de grupo
                     output_files = await self._download_media_group(task, source_message)
+                    
+                    # Adicionar metadado de grupo na task para o upload_manager saber que é um grupo
+                    task.is_media_group = True
+                    task.media_group_id = source_message.media_group_id
                 else:
                     # Handle single media
                     output_file = await self._download_single_media(task, source_message)
                     output_files = [output_file] if output_file else []
+                    task.is_media_group = False
+                    task.media_group_id = None
                 
                 # Mark download as completed
                 task.is_completed = True
@@ -168,17 +180,31 @@ class DownloadManager:
                 
                 # Queue for upload if we have files and upload manager is set
                 if output_files and self.upload_manager:
-                    for output_path in output_files:
-                        if output_path and os.path.exists(output_path):
-                            # Add to upload queue
-                            await self.upload_manager.enqueue_upload(
+                    if task.is_media_group:
+                        # Se for um grupo de mídia, envia todos os arquivos juntos para preservar agrupamento
+                        valid_files = [path for path in output_files if path and os.path.exists(path)]
+                        if valid_files:
+                            await self.upload_manager.enqueue_media_group(
                                 task.bot,
                                 task.user_id,
-                                output_path,
-                                source_message,
+                                valid_files,
+                                source_message.media_group_id,
                                 task.original_message,
                                 task.status_message
                             )
+                    else:
+                        # Uploads individuais para mídias não agrupadas
+                        for output_path in output_files:
+                            if output_path and os.path.exists(output_path):
+                                # Add to upload queue
+                                await self.upload_manager.enqueue_upload(
+                                    task.bot,
+                                    task.user_id,
+                                    output_path,
+                                    source_message,
+                                    task.original_message,
+                                    task.status_message
+                                )
                 
             except Exception as e:
                 # Update status with error
@@ -265,20 +291,26 @@ class DownloadManager:
             downloads_dir = Path("./downloads")
             downloads_dir.mkdir(exist_ok=True)
             
-            # Update status message
-            await task.status_message.edit_text(
-                f"📥 Downloading media group ({len(media_group_messages)} items)..."
-            )
+            # Update status message and track last text
+            status_text = f"📥 Downloading media group ({len(media_group_messages)} items)..."
+            if not hasattr(task, 'last_progress_text') or task.last_progress_text != status_text:
+                await task.status_message.edit_text(status_text)
+                task.last_progress_text = status_text
             
             # Download each media in the group
             for i, msg in enumerate(media_group_messages):
                 if not msg.media:
                     continue
                 
-                # Update progress
-                await task.status_message.edit_text(
-                    f"📥 Downloading media {i+1}/{len(media_group_messages)}..."
-                )
+                # Update progress with careful tracking of last message
+                new_status = f"📥 Downloading media {i+1}/{len(media_group_messages)}..."
+                if task.last_progress_text != new_status:
+                    try:
+                        await task.status_message.edit_text(new_status)
+                        task.last_progress_text = new_status
+                    except Exception as e:
+                        if "MESSAGE_NOT_MODIFIED" not in str(e):
+                            print(f"Error updating status: {e}")
                 
                 # Get file extension
                 file_ext = self._get_file_extension(msg)
@@ -291,10 +323,15 @@ class DownloadManager:
                 
                 output_paths.append(Path(file_path))
             
-            # Update status
-            await task.status_message.edit_text(
-                f"✅ Media group download completed ({len(output_paths)}/{len(media_group_messages)} files). Queued for upload..."
-            )
+            # Update status with final message
+            final_status = f"✅ Media group download completed ({len(output_paths)}/{len(media_group_messages)} files). Queued for upload..."
+            if task.last_progress_text != final_status:
+                try:
+                    await task.status_message.edit_text(final_status)
+                    task.last_progress_text = final_status
+                except Exception as e:
+                    if "MESSAGE_NOT_MODIFIED" not in str(e):
+                        print(f"Error updating final status: {e}")
             
             return output_paths
             
@@ -331,16 +368,28 @@ class DownloadManager:
         else:
             speed_str = f"{speed/(1024*1024):.2f} MB/s"
         
-        # Update status periodically (not too often to avoid flood)
-        if current == total or current % (max(1, total // 10)) == 0:
-            try:
-                await task.status_message.edit_text(
-                    f"📥 Downloading: {percentage:.1f}%\n"
-                    f"🚀 Speed: {speed_str}\n"
-                    f"⏱️ ETA: {eta_str}"
-                )
-            except Exception:
-                pass
+        # Store previous progress info to avoid duplicate updates
+        if not hasattr(task, 'last_progress_text'):
+            task.last_progress_text = ""
+        
+        # Prepare new progress text
+        new_progress_text = (
+            f"📥 Downloading: {percentage:.1f}%\n"
+            f"🚀 Speed: {speed_str}\n"
+            f"⏱️ ETA: {eta_str}"
+        )
+        
+        # Only update if the text actually changed or at 100%
+        if new_progress_text != task.last_progress_text or current == total:
+            # Update status periodically (not too often to avoid flood)
+            if current == total or current % (max(1, total // 10)) == 0:
+                try:
+                    await task.status_message.edit_text(new_progress_text)
+                    task.last_progress_text = new_progress_text
+                except Exception as e:
+                    # Ignore MESSAGE_NOT_MODIFIED errors
+                    if "MESSAGE_NOT_MODIFIED" not in str(e):
+                        print(f"Error updating progress: {e}")
     
     def _format_time(self, seconds: float) -> str:
         """Format seconds into readable time string"""

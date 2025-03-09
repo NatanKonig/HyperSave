@@ -34,3 +34,7 @@ class DownloadTask:
     
     # Result path
     output_path: Optional[Path]
+    
+    # Media group info
+    is_media_group: bool = False
+    media_group_id: Optional[str] = None

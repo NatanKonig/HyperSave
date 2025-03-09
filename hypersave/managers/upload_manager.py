@@ -88,7 +88,10 @@ class UploadManager:
             start_time=None,  # Will be set when upload starts
             progress=0,
             total_size=os.path.getsize(file_path) if os.path.exists(file_path) else 0,
-            is_completed=False
+            is_completed=False,
+            is_media_group=False,
+            media_group_id=None,
+            media_group_files=[]
         )
         
         # Put task in queue
@@ -96,7 +99,73 @@ class UploadManager:
         
         # Update status message if provided
         if status_message:
-            await status_message.edit_text(f"⏳ Upload queued. Position: {self.upload_queue.qsize()}")
+            # Store last message text to avoid duplicate updates
+            task.last_progress_text = f"⏳ Upload queued. Position: {self.upload_queue.qsize()}"
+            try:
+                await status_message.edit_text(task.last_progress_text)
+            except Exception as e:
+                if "MESSAGE_NOT_MODIFIED" not in str(e):
+                    print(f"Error updating upload queue status: {e}")
+        
+        return task_id
+    
+    async def enqueue_media_group(
+        self,
+        bot: Client,
+        user_id: str,
+        file_paths: List[Path],
+        media_group_id: str,
+        original_message: Message,
+        status_message: Message
+    ) -> str:
+        """
+        Add a media group upload task to the queue
+        
+        Args:
+            bot: Bot client
+            user_id: User identifier
+            file_paths: List of paths to the files to upload
+            media_group_id: Media group identifier
+            original_message: User's message that triggered the download
+            status_message: Message for status updates
+            
+        Returns:
+            task_id: Unique identifier for this upload task
+        """
+        # Create a unique task ID
+        task_id = f"upload_group_{user_id}_{int(time())}_{media_group_id}"
+        
+        # Create upload task for the group
+        task = UploadTask(
+            task_id=task_id,
+            user_id=user_id,
+            bot=bot,
+            file_path=file_paths[0] if file_paths else None,  # Primary file just for reference
+            original_message=original_message,
+            status_message=status_message,
+            source_message=None,  # No single source message for groups
+            caption="",  # Will be set per media item
+            start_time=None,  # Will be set when upload starts
+            progress=0,
+            total_size=sum(os.path.getsize(f) for f in file_paths if os.path.exists(f)),
+            is_completed=False,
+            is_media_group=True,
+            media_group_id=media_group_id,
+            media_group_files=file_paths
+        )
+        
+        # Put task in queue
+        await self.upload_queue.put(task)
+        
+        # Update status message
+        if status_message:
+            # Store last message text to avoid duplicate updates
+            task.last_progress_text = f"⏳ Media group upload queued ({len(file_paths)} items). Position: {self.upload_queue.qsize()}"
+            try:
+                await status_message.edit_text(task.last_progress_text)
+            except Exception as e:
+                if "MESSAGE_NOT_MODIFIED" not in str(e):
+                    print(f"Error updating upload queue status: {e}")
         
         return task_id
     
@@ -123,29 +192,44 @@ class UploadManager:
                 self.active_uploads[task.task_id] = task
                 
                 # Update status message
-                await task.status_message.edit_text("📤 Upload started...")
+                if not hasattr(task, 'last_progress_text') or task.last_progress_text != "📤 Upload started...":
+                    try:
+                        await task.status_message.edit_text("📤 Upload started...")
+                        task.last_progress_text = "📤 Upload started..."
+                    except Exception as e:
+                        if "MESSAGE_NOT_MODIFIED" not in str(e):
+                            print(f"Error updating upload start status: {e}")
                 
                 # Mark upload start time
                 task.start_time = time()
                 
-                # Check if file exists
-                if not os.path.exists(task.file_path):
-                    await task.status_message.edit_text(f"❌ File not found for upload: {task.file_path}")
-                    return
-                
-                # Determine media type and upload accordingly
-                await self._upload_media(task)
+                # Process based on whether it's a media group or single file
+                if task.is_media_group:
+                    await self._upload_media_group(task)
+                else:
+                    # Check if file exists
+                    if not os.path.exists(task.file_path):
+                        await task.status_message.edit_text(f"❌ File not found for upload: {task.file_path}")
+                        return
+                    
+                    # Determine media type and upload accordingly
+                    await self._upload_media(task)
                 
                 # Mark as completed
                 task.is_completed = True
                 self.completed_uploads.append(task.task_id)
                 
                 # Update status
-                await task.status_message.edit_text("✅ Upload completed!")
+                if not hasattr(task, 'last_progress_text') or task.last_progress_text != "✅ Upload completed!":
+                    try:
+                        await task.status_message.edit_text("✅ Upload completed!")
+                        task.last_progress_text = "✅ Upload completed!"
+                    except Exception as e:
+                        if "MESSAGE_NOT_MODIFIED" not in str(e):
+                            print(f"Error updating upload completion status: {e}")
                 
-                # Clean up the file if it still exists
-                if os.path.exists(task.file_path):
-                    os.remove(task.file_path)
+                # Clean up files
+                await self._cleanup_files(task)
                 
             except Exception as e:
                 # Update status with error
@@ -158,6 +242,101 @@ class UploadManager:
                 
                 # Mark queue task as done
                 self.upload_queue.task_done()
+    
+    async def _upload_media_group(self, task: UploadTask):
+        """Process and upload a media group"""
+        try:
+            # Preparar a lista de mídias para o grupo
+            media_list = []
+            chat_id = task.original_message.chat.id
+            
+            # Update status
+            status_text = f"📤 Processando grupo de mídia ({len(task.media_group_files)} itens)..."
+            if not hasattr(task, 'last_progress_text') or task.last_progress_text != status_text:
+                try:
+                    await task.status_message.edit_text(status_text)
+                    task.last_progress_text = status_text
+                except Exception as e:
+                    if "MESSAGE_NOT_MODIFIED" not in str(e):
+                        print(f"Error updating media group process status: {e}")
+            
+            # Processar cada arquivo no grupo
+            for i, file_path in enumerate(task.media_group_files):
+                if not os.path.exists(file_path):
+                    continue
+                
+                file_ext = file_path.suffix.lower()
+                
+                # Preparar de acordo com o tipo de mídia
+                if file_ext in ['.jpg', '.jpeg', '.png']:
+                    # Adicionar como foto
+                    media_list.append(
+                        InputMediaPhoto(media=str(file_path))
+                    )
+                
+                elif file_ext in ['.mp4', '.avi', '.mov', '.mkv']:
+                    # Processar vídeo
+                    await move_metadata_to_start(file_path)
+                    duration, width, height = await get_video_info(file_path)
+                    
+                    # Gerar thumbnail
+                    thumb_path = file_path.with_suffix('.jpg')
+                    await get_video_thumbnail(file_path, thumb_path)
+                    
+                    # Adicionar como vídeo
+                    media_list.append(
+                        InputMediaVideo(
+                            media=str(file_path),
+                            thumb=str(thumb_path),
+                            duration=duration,
+                            width=width,
+                            height=height
+                        )
+                    )
+            
+            # Enviar em lotes (máximo 10 por grupo - limite do Telegram)
+            if media_list:
+                total_batches = (len(media_list) + 9) // 10  # Teto da divisão
+                
+                for i in range(0, len(media_list), 10):
+                    batch = media_list[i:i+10]
+                    batch_num = i // 10 + 1
+                    
+                    # Atualizar status
+                    status_text = f"📤 Enviando grupo de mídia... (Lote {batch_num}/{total_batches})"
+                    if not hasattr(task, 'last_progress_text') or task.last_progress_text != status_text:
+                        try:
+                            await task.status_message.edit_text(status_text)
+                            task.last_progress_text = status_text
+                        except Exception as e:
+                            if "MESSAGE_NOT_MODIFIED" not in str(e):
+                                print(f"Error updating media group upload status: {e}")
+                    
+                    # Enviar o grupo
+                    try:
+                        await task.bot.send_media_group(
+                            chat_id=chat_id,
+                            media=batch
+                        )
+                    except Exception as e:
+                        error_msg = f"Erro ao enviar lote {batch_num}/{total_batches}: {str(e)}"
+                        await task.original_message.reply(error_msg)
+                
+                # Atualizar status final
+                final_status = f"✅ Grupo de mídia enviado com sucesso! ({len(media_list)} itens)"
+                if not hasattr(task, 'last_progress_text') or task.last_progress_text != final_status:
+                    try:
+                        await task.status_message.edit_text(final_status)
+                        task.last_progress_text = final_status
+                    except Exception as e:
+                        if "MESSAGE_NOT_MODIFIED" not in str(e):
+                            print(f"Error updating media group final status: {e}")
+            else:
+                await task.status_message.edit_text("❌ Nenhum arquivo de mídia válido encontrado no grupo")
+        
+        except Exception as e:
+            await task.status_message.edit_text(f"❌ Erro ao processar grupo de mídia: {str(e)}")
+            raise
     
     async def _upload_media(self, task: UploadTask):
         """Upload media based on file type"""
@@ -255,6 +434,26 @@ class UploadManager:
             await task.status_message.edit_text(f"❌ Upload error: {str(e)}")
             raise
     
+    async def _cleanup_files(self, task: UploadTask):
+        """Clean up files after upload"""
+        try:
+            if task.is_media_group:
+                # Limpar todos os arquivos do grupo
+                for file_path in task.media_group_files:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                    
+                    # Também remover thumbnails se existirem
+                    thumb_path = file_path.with_suffix('.jpg')
+                    if os.path.exists(thumb_path):
+                        os.remove(thumb_path)
+            else:
+                # Clean up the single file
+                if os.path.exists(task.file_path):
+                    os.remove(task.file_path)
+        except Exception as e:
+            print(f"Error cleaning up files: {e}")
+    
     async def _progress_callback(self, current: int, total: int, task: UploadTask):
         """Callback for upload progress updates"""
         if total == 0:
@@ -284,16 +483,28 @@ class UploadManager:
         else:
             speed_str = f"{speed/(1024*1024):.2f} MB/s"
         
-        # Update status periodically (not too often to avoid flood)
-        if current == total or current % (max(1, total // 10)) == 0:
-            try:
-                await task.status_message.edit_text(
-                    f"📤 Uploading: {percentage:.1f}%\n"
-                    f"🚀 Speed: {speed_str}\n"
-                    f"⏱️ ETA: {eta_str}"
-                )
-            except Exception:
-                pass
+        # Store previous progress info to avoid duplicate updates
+        if not hasattr(task, 'last_progress_text'):
+            task.last_progress_text = ""
+            
+        # Prepare new progress text
+        new_progress_text = (
+            f"📤 Uploading: {percentage:.1f}%\n"
+            f"🚀 Speed: {speed_str}\n"
+            f"⏱️ ETA: {eta_str}"
+        )
+        
+        # Only update if the text actually changed or at 100%
+        if new_progress_text != task.last_progress_text or current == total:
+            # Update status periodically (not too often to avoid flood)
+            if current == total or current % (max(1, total // 10)) == 0:
+                try:
+                    await task.status_message.edit_text(new_progress_text)
+                    task.last_progress_text = new_progress_text
+                except Exception as e:
+                    # Ignore MESSAGE_NOT_MODIFIED errors
+                    if "MESSAGE_NOT_MODIFIED" not in str(e):
+                        print(f"Error updating progress: {e}")
     
     def _format_time(self, seconds: float) -> str:
         """Format seconds into readable time string"""
@@ -313,7 +524,7 @@ class UploadManager:
                 {
                     "task_id": task_id,
                     "user_id": task.user_id,
-                    "file": task.file_path.name,
+                    "file": task.file_path.name if task.file_path else "Media Group",
                     "progress": f"{(task.progress / task.total_size * 100):.1f}%" if task.total_size else "0%",
                     "speed": self._calculate_speed(task) if task.start_time else "N/A",
                     "eta": self._calculate_eta(task) if task.start_time and task.total_size and task.progress else "N/A"

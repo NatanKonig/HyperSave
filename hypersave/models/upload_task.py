@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from pyrogram import Client
 from pyrogram.types import Message
+
 
 
 @dataclass
@@ -33,3 +34,8 @@ class UploadTask:
     
     # Status
     is_completed: bool
+    
+    # Media group info
+    is_media_group: bool = False
+    media_group_id: Optional[str] = None
+    media_group_files: List[Path] = None

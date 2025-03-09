@@ -276,6 +276,18 @@ async def process_video_thumb(video_path: Path, thumb_path: Path, frames: int = 
         Path to the thumbnail grid
     """
     try:
+        # Make sure parent directories exist
+        thumb_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # For very large videos, reduce the number of frames to avoid timeout
+        file_size = video_path.stat().st_size
+        if file_size > 100 * 1024 * 1024:  # 100 MB
+            frames = min(frames, 9)  # Use 3x3 grid for large videos
+            grid = (3, 3)
+        elif file_size > 50 * 1024 * 1024:  # 50 MB
+            frames = min(frames, 12)  # Use 4x3 grid for medium videos
+            grid = (4, 3)
+        
         # Extract frames
         frames_folder = await extract_frames(video_path, frames)
         
@@ -285,4 +297,11 @@ async def process_video_thumb(video_path: Path, thumb_path: Path, frames: int = 
         return thumb_path
     except Exception as e:
         print(f"Error processing video thumbnail: {e}")
-        raise
+        # Return a default thumbnail if we failed to create one
+        try:
+            # Try to at least get a single frame
+            await get_video_thumbnail(video_path, thumb_path)
+            return thumb_path
+        except:
+            # If all else fails, just return the path (will be missing but upload will still work)
+            return thumb_path
