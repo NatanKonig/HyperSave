@@ -8,6 +8,7 @@ from pyrogram import Client, idle
 from hypersave.database.database import Database
 from hypersave.logger import logger
 from hypersave.settings import Settings
+from hypersave.utils.clear_folders import clear_and_create_folders
 
 uvloop.install()
 
@@ -38,6 +39,7 @@ async def main():
 
 if __name__ == "__main__":
     try:
+        clear_and_create_folders()
         logger.success("Bot iniciado!")
         asyncio.run(main())
     except Exception as e:

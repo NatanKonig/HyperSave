@@ -7,6 +7,10 @@ from shutil import rmtree
 import cv2
 from PIL import Image, ImageDraw, ImageFont
 
+from hypersave.settings import Settings
+
+settings = Settings()
+
 
 async def get_video_info(video_path: Path) -> tuple:
     """
@@ -133,7 +137,7 @@ async def extract_frames(video_path: Path, frames: int) -> Path:
     """
     try:
         # Create folder for frames
-        folder = Path("downloads/thumbs") / video_path.stem
+        folder = settings.THUMBS_DIR / video_path.stem
         folder.mkdir(parents=True, exist_ok=True)
 
         # Get video duration

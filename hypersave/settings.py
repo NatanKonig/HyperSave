@@ -1,6 +1,8 @@
+import os
+from pathlib import Path
+
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
-import os
 
 
 class Settings(BaseSettings):
@@ -20,6 +22,11 @@ class Settings(BaseSettings):
 
     def __init__(self, **data):
         super().__init__(**data)
+        self.BASE_DIR = Path(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        )
+        self.DOWNLOADS_DIR = self.BASE_DIR / "downloads"
+        self.THUMBS_DIR = self.DOWNLOADS_DIR / "thumbs"
         self._create_directories()
 
     @field_validator("admin_ids", mode="before")
@@ -46,6 +53,6 @@ class Settings(BaseSettings):
 
     def _create_directories(self):
         """Create necessary directories if they don't exist"""
-        os.makedirs("downloads", exist_ok=True)
         os.makedirs("sessions", exist_ok=True)
-        os.makedirs("downloads/thumbs", exist_ok=True)
+        self.DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+        self.THUMBS_DIR.mkdir(parents=True, exist_ok=True)

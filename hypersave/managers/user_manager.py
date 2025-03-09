@@ -5,9 +5,9 @@ from typing import Dict, Optional
 from pyrogram import Client
 from pyrogram.errors import RPCError
 
+from hypersave.database.user_repository import UserRepository
 from hypersave.models.user_client import UserClient
 from hypersave.settings import Settings
-from hypersave.database.user_repository import UserRepository
 
 
 class UserManager:

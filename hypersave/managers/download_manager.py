@@ -266,15 +266,14 @@ class DownloadManager:
                 )
                 return None
 
-            # Create a unique file path based on message ID
-            downloads_dir = Path("downloads")
-            downloads_dir.mkdir(exist_ok=True)
-
             # Determine file extension based on media type
             file_ext = self._get_file_extension(source_message)
 
             # Create output path
-            output_path = downloads_dir / f"{task.chat_id}_{task.message_id}{file_ext}"
+            output_path = (
+                self.settings.DOWNLOADS_DIR
+                / f"{task.chat_id}_{task.message_id}{file_ext}"
+            )
 
             # Download media file with progress tracking and melhor tratamento de erros
             try:
@@ -345,8 +344,6 @@ class DownloadManager:
             )
 
             output_paths = []
-            downloads_dir = Path("downloads")
-            downloads_dir.mkdir(exist_ok=True)
 
             # Update status message and track last text
             status_text = (
@@ -380,7 +377,9 @@ class DownloadManager:
                 file_ext = self._get_file_extension(msg)
 
                 # Create unique filename
-                output_path = downloads_dir / f"{task.chat_id}_{msg.id}{file_ext}"
+                output_path = (
+                    self.settings.DOWNLOADS_DIR / f"{task.chat_id}_{msg.id}{file_ext}"
+                )
 
                 # Download the file
                 file_path = await msg.download(file_name=str(output_path))
