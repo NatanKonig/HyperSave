@@ -11,7 +11,6 @@ from hypersave.managers.upload_manager import UploadManager
 from hypersave.managers.user_manager import UserManager
 from hypersave.utils.message_utils import save_message_info
 
-
 # Create manager instances
 user_manager = UserManager()
 download_manager = DownloadManager()
@@ -32,32 +31,32 @@ async def handle_download_request(bot: Client, message: Message):
     try:
         # Save message info for analytics
         await save_message_info(message)
-        
+
         # Extract URL from message
         post_url = message.text.strip()
         user_id = str(message.from_user.id)
-        
+
         # Get user client
         user_client = await user_manager.get_user_client(user_id)
-        
+
         if not user_client:
             await message.reply(
                 "Você precisa fazer login primeiro. Use /login para fazer login!"
             )
             return
-        
+
         # React to show the request is being processed
         await bot.send_reaction(message.chat.id, message_id=message.id, emoji="⚡")
-        
+
         # Queue the download
         await download_manager.enqueue_download(
             user_client=user_client,
             user_id=user_id,
             url=post_url,
             message=message,
-            bot=bot
+            bot=bot,
         )
-        
+
     except ValueError as e:
         await message.reply("Formato de URL inválido")
     except Exception as e:

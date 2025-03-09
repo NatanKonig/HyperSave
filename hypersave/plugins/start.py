@@ -12,6 +12,7 @@ async def start_command(client: ClientBot, message: Message):
         "Olá! Eu sou um bot de salvamento de mídias privadas do Telegram!\n\nPara saber mais /help"
     )
 
+
 @ClientBot.on_message(filters.command("help") & filters.private)
 async def handle_help_command(bot: Client, message: Message):
     """Handle help command"""
@@ -29,5 +30,5 @@ async def handle_help_command(bot: Client, message: Message):
         "3. Use /status para verificar o progresso\n\n"
         "⚠️ Somente baixe conteúdo que você tem permissão para acessar!"
     )
-    
+
     await message.reply(help_text)
