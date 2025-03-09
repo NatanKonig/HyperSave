@@ -5,9 +5,9 @@ from typing import Dict, Optional
 from pyrogram import Client
 from pyrogram.errors import RPCError
 
-from hypersave.database.user_repository import UserRepository
 from hypersave.models.user_client import UserClient
 from hypersave.settings import Settings
+from hypersave.database.user_repository import UserRepository
 
 
 class UserManager:
@@ -93,7 +93,7 @@ class UserManager:
                 api_hash=self.settings.api_hash,
                 device_model=self.settings.bot_name,
                 max_concurrent_transmissions=5,
-                workdir="./sessions/",
+                workdir="sessions",
             )
 
             # Start client

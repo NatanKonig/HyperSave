@@ -1,0 +1,16 @@
+.env
+.git
+.github
+.gitignore
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.so
+.DS_Store
+downloads/
+logs/
+sessions/

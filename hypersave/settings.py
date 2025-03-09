@@ -1,5 +1,6 @@
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
+import os
 
 
 class Settings(BaseSettings):
@@ -16,6 +17,10 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
         case_sensitive = False
         extra = "allow"
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self._create_directories()
 
     @field_validator("admin_ids", mode="before")
     def parse_admin_ids(cls, value):
@@ -38,3 +43,9 @@ class Settings(BaseSettings):
     #     elif isinstance(value, int):
     #         return [value]
     #     return value
+
+    def _create_directories(self):
+        """Create necessary directories if they don't exist"""
+        os.makedirs("downloads", exist_ok=True)
+        os.makedirs("sessions", exist_ok=True)
+        os.makedirs("downloads/thumbs", exist_ok=True)

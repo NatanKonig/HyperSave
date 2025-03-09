@@ -267,7 +267,7 @@ class DownloadManager:
                 return None
 
             # Create a unique file path based on message ID
-            downloads_dir = Path("./downloads")
+            downloads_dir = Path("downloads")
             downloads_dir.mkdir(exist_ok=True)
 
             # Determine file extension based on media type
@@ -276,25 +276,62 @@ class DownloadManager:
             # Create output path
             output_path = downloads_dir / f"{task.chat_id}_{task.message_id}{file_ext}"
 
-            # Download media file with progress tracking
-            file_path = await source_message.download(
-                file_name=str(output_path),
-                progress=self._progress_callback,
-                progress_args=(task,),
-            )
+            # Download media file with progress tracking and melhor tratamento de erros
+            try:
+                file_path = await source_message.download(
+                    file_name=str(output_path),
+                    progress=self._progress_callback,
+                    progress_args=(task,),
+                )
 
-            # Update task with result
-            task.output_path = Path(file_path)
+                # Update task with result
+                task.output_path = Path(file_path)
 
-            # Update status
-            await task.status_message.edit_text(
-                "✅ Download completed. Queued for upload..."
-            )
+                # Update status
+                await task.status_message.edit_text(
+                    "✅ Download completed. Queued for upload..."
+                )
 
-            return Path(file_path)
+                return Path(file_path)
+
+            except FileNotFoundError as e:
+                # Problemas comuns no Docker com arquivos temporários
+                error_msg = (
+                    f"Erro ao salvar arquivo. Tentando novamente com novo nome: {e}"
+                )
+                print(error_msg)
+
+                # Tentar com novo nome para evitar conflitos
+                new_output_path = output_path.with_name(
+                    f"{output_path.stem}_retry{output_path.suffix}"
+                )
+
+                try:
+                    # Tentar novamente com novo nome
+                    file_path = await source_message.download(
+                        file_name=str(new_output_path)
+                    )
+
+                    task.output_path = Path(file_path)
+                    await task.status_message.edit_text(
+                        "✅ Download completed após retentativa. Queued for upload..."
+                    )
+
+                    return Path(file_path)
+                except Exception as retry_error:
+                    await task.status_message.edit_text(
+                        f"❌ Falha no download após retentativa: {str(retry_error)}"
+                    )
+                    raise
 
         except Exception as e:
-            await task.status_message.edit_text(f"❌ Download failed: {str(e)}")
+            error_msg = f"❌ Download failed: {str(e)}"
+            print(error_msg)
+            try:
+                await task.status_message.edit_text(error_msg)
+            except Exception as msg_error:
+                if "MESSAGE_NOT_MODIFIED" not in str(msg_error):
+                    print(f"Erro ao atualizar mensagem de erro: {msg_error}")
             raise
 
     async def _download_media_group(
@@ -308,7 +345,7 @@ class DownloadManager:
             )
 
             output_paths = []
-            downloads_dir = Path("./downloads")
+            downloads_dir = Path("downloads")
             downloads_dir.mkdir(exist_ok=True)
 
             # Update status message and track last text

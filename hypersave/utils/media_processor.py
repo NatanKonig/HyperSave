@@ -48,7 +48,14 @@ async def get_video_thumbnail(video_path: Path, output_path: Path) -> Path:
     Returns:
         Path to the thumbnail
     """
+    if not video_path.exists():
+        print(f"Arquivo de vídeo não encontrado para thumbnail: {video_path}")
+        return output_path
+
     try:
+        # Garantir que o diretório de saída existe
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
         cmd = [
             "ffmpeg",
             "-i",
@@ -64,12 +71,13 @@ async def get_video_thumbnail(video_path: Path, output_path: Path) -> Path:
         await process.communicate()
 
         if process.returncode != 0:
-            raise RuntimeError(f"Failed to extract thumbnail from {video_path}")
+            print(f"Failed to extract thumbnail from {video_path}")
 
+        # Retorna o caminho mesmo se falhar (o upload vai funcionar sem thumbnail)
         return output_path
     except Exception as e:
         print(f"Error getting video thumbnail: {e}")
-        raise
+        return output_path
 
 
 async def move_metadata_to_start(video_path: Path):
@@ -79,6 +87,10 @@ async def move_metadata_to_start(video_path: Path):
     Args:
         video_path: Path to the video file
     """
+    if not video_path.exists():
+        print(f"Arquivo de vídeo não encontrado: {video_path}")
+        return
+
     try:
         tmp_video_path = video_path.with_suffix(".tmp.mp4")
 
@@ -97,11 +109,13 @@ async def move_metadata_to_start(video_path: Path):
         process = await asyncio.create_subprocess_exec(*cmd, stderr=PIPE, stdout=PIPE)
         await process.communicate()
 
-        if process.returncode == 0:
+        if process.returncode == 0 and tmp_video_path.exists():
             # Replace original with optimized version
             tmp_video_path.replace(video_path)
         else:
             print(f"Warning: Failed to optimize video {video_path}")
+    except FileNotFoundError as e:
+        print(f"Error optimizing video: {e}")
     except Exception as e:
         print(f"Error optimizing video: {e}")
 
@@ -119,7 +133,7 @@ async def extract_frames(video_path: Path, frames: int) -> Path:
     """
     try:
         # Create folder for frames
-        folder = Path("./downloads/thumbs") / video_path.stem
+        folder = Path("downloads/thumbs") / video_path.stem
         folder.mkdir(parents=True, exist_ok=True)
 
         # Get video duration
