@@ -179,7 +179,7 @@ async def extract_frames(video_path: Path, frames: int) -> Path:
 
 async def draw_time_on_image(image_path: Path, time_seconds: float):
     """
-    Add timestamp to an image
+    Add timestamp to an image in the top-right
 
     Args:
         image_path: Path to the image
@@ -199,27 +199,33 @@ async def draw_time_on_image(image_path: Path, time_seconds: float):
             time_str = f"{minutes:02}:{seconds:02}"
 
         # Get font
+        font_size = int(img.width * 0.1)
         try:
-            font = ImageFont.truetype("DejaVuSans.ttf", 60)
+            font = ImageFont.truetype("Arial Bold.ttf", font_size)
         except IOError:
-            font = ImageFont.load_default()
+            font = ImageFont.truetype("DejaVuSans-Bold.ttf", font_size)
 
         # Calculate text size
         text_bbox = draw.textbbox((0, 0), time_str, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
 
-        # Position text at bottom left
-        text_position = (10, img.height - text_height - 10)
+        # Position text at top right
+        padding = 20
+        text_position = (img.width - text_width - padding, padding)
 
-        # Draw background
+        # Draw rounded rectangle background
+        bg_margin = 15  # Espaço extra ao redor do texto
         background_position = [
-            text_position[0] - 5,
-            text_position[1] - 5,
-            text_position[0] + text_width + 10,
-            text_position[1] + text_height + 10,
+            text_position[0] - bg_margin,
+            text_position[1] - bg_margin,
+            text_position[0] + text_width + bg_margin,
+            text_position[1] + text_height + bg_margin,
         ]
-        draw.rectangle(background_position, fill=(0, 0, 0))
+        bg_radius = 20  # Arredondamento dos cantos
+        draw.rounded_rectangle(
+            background_position, radius=bg_radius, fill=(0, 0, 0, 180)
+        )
 
         # Draw text with shadow
         shadow_offset = (2, 2)
@@ -298,7 +304,9 @@ async def create_thumb_grid(
 
 
 async def process_video_thumb(
-    video_path: Path, thumb_path: Path, frames: int = 16, grid: tuple = (4, 4)
+    video_path: Path,
+    thumb_path: Path,
+    duration: int,
 ) -> Path:
     """
     Process video to create a thumbnail grid
@@ -316,14 +324,18 @@ async def process_video_thumb(
         # Make sure parent directories exist
         thumb_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # For very large videos, reduce the number of frames to avoid timeout
-        file_size = video_path.stat().st_size
-        if file_size > 100 * 1024 * 1024:  # 100 MB
-            frames = min(frames, 9)  # Use 3x3 grid for large videos
-            grid = (3, 3)
-        elif file_size > 50 * 1024 * 1024:  # 50 MB
-            frames = min(frames, 12)  # Use 4x3 grid for medium videos
+        if duration < 300:
+            frames = 12
             grid = (4, 3)
+        elif duration < 600:
+            frames = 16
+            grid = (4, 4)
+        elif duration < 1800:
+            frames = 25
+            grid = (5, 5)
+        else:
+            frames = 36
+            grid = (6, 6)
 
         # Extract frames
         frames_folder = await extract_frames(video_path, frames)

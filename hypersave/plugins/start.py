@@ -3,6 +3,10 @@ from pyrogram.types import Message
 
 from hypersave.bot import ClientBot
 from hypersave.utils.message_utils import save_message_info
+from hypersave.plugins.custom_filters import CustomFilters
+
+
+custom_filters = CustomFilters()
 
 
 @ClientBot.on_message(filters.command("start") & filters.private)
@@ -26,3 +30,8 @@ async def handle_help_command(bot: Client, message: Message):
     )
 
     await message.reply(help_text)
+
+
+@ClientBot.on_message(filters.command("id") & custom_filters.is_admin)
+async def handle_peer_command(client: ClientBot, message: Message):
+    await message.reply(f"Peer ID: {message.chat.id}")

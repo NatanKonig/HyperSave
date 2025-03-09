@@ -9,6 +9,7 @@ from pyrogram.errors import RPCError
 from pyrogram.types import InputMediaPhoto, InputMediaVideo, Message
 
 from hypersave.models.upload_task import UploadTask
+from hypersave.settings import Settings
 from hypersave.utils.media_processor import (
     get_video_info,
     get_video_thumbnail,
@@ -29,6 +30,8 @@ class UploadManager:
         # Processor task
         self.processor_task = None
         self.running = False
+
+        self.settings = Settings()
 
     def start(self):
         """Start the upload manager processing loop"""
@@ -308,6 +311,8 @@ class UploadManager:
                     )
 
             # Enviar em lotes (máximo 10 por grupo - limite do Telegram)
+            sent_message_ids = []  # Para armazenar IDs das mensagens enviadas
+
             if media_list:
                 total_batches = (len(media_list) + 9) // 10  # Teto da divisão
 
@@ -330,7 +335,35 @@ class UploadManager:
 
                     # Enviar o grupo
                     try:
-                        await task.bot.send_media_group(chat_id=chat_id, media=batch)
+                        sent_messages = await task.bot.send_media_group(
+                            chat_id=chat_id, media=batch
+                        )
+
+                        # Armazenar IDs das mensagens enviadas
+                        if sent_messages:
+                            for msg in sent_messages:
+                                sent_message_ids.append(msg.id)
+
+                        # Enviar cópia para o grupo privado, se configurado
+                        if (
+                            hasattr(self.settings, "private_group_id")
+                            and self.settings.private_group_id
+                        ):
+                            try:
+                                # Para grupos de mídia, usamos o primeiro message_id e media_group_id
+                                if sent_messages and len(sent_messages) > 0:
+                                    first_msg = sent_messages[0]
+                                    if first_msg.media_group_id:
+                                        await task.bot.forward_messages(
+                                            chat_id=self.settings.private_group_id,
+                                            from_chat_id=chat_id,
+                                            message_ids=sent_message_ids,
+                                        )
+                            except Exception as e:
+                                print(
+                                    f"Error forwarding media group to private group: {e}"
+                                )
+
                     except Exception as e:
                         error_msg = (
                             f"Erro ao enviar lote {batch_num}/{total_batches}: {str(e)}"
@@ -367,12 +400,13 @@ class UploadManager:
         file_path = task.file_path
         file_ext = file_path.suffix.lower()
         chat_id = task.original_message.chat.id
+        sent_message = None
 
         try:
             # Process media based on file type
             if file_ext in [".jpg", ".jpeg", ".png"]:
                 # Upload as photo
-                await task.bot.send_photo(
+                sent_message = await task.bot.send_photo(
                     chat_id=chat_id,
                     photo=str(file_path),
                     caption=task.caption,
@@ -391,7 +425,7 @@ class UploadManager:
 
                 # Upload video
                 if duration <= 180:  # Short video
-                    await task.bot.send_video(
+                    sent_message = await task.bot.send_video(
                         chat_id=chat_id,
                         video=str(file_path),
                         caption=task.caption,
@@ -404,7 +438,7 @@ class UploadManager:
                     )
                 else:  # Longer video, create preview
                     thumb_preview_path = file_path.with_suffix(".thumb.jpg")
-                    await process_video_thumb(file_path, thumb_preview_path)
+                    await process_video_thumb(file_path, thumb_preview_path, duration)
 
                     media_group = [
                         InputMediaVideo(
@@ -418,7 +452,13 @@ class UploadManager:
                         InputMediaPhoto(media=str(thumb_preview_path)),
                     ]
 
-                    await task.bot.send_media_group(chat_id=chat_id, media=media_group)
+                    sent_messages = await task.bot.send_media_group(
+                        chat_id=chat_id, media=media_group
+                    )
+                    if sent_messages:
+                        sent_message = sent_messages[
+                            0
+                        ]  # Use a primeira mensagem como referência
 
                     # Clean up preview thumbnail
                     if os.path.exists(thumb_preview_path):
@@ -430,7 +470,7 @@ class UploadManager:
 
             elif file_ext in [".mp3", ".m4a", ".ogg", ".flac"]:
                 # Upload as audio
-                await task.bot.send_audio(
+                sent_message = await task.bot.send_audio(
                     chat_id=chat_id,
                     audio=str(file_path),
                     caption=task.caption,
@@ -440,13 +480,38 @@ class UploadManager:
 
             else:
                 # Upload as document for other types
-                await task.bot.send_document(
+                sent_message = await task.bot.send_document(
                     chat_id=chat_id,
                     document=str(file_path),
                     caption=task.caption,
                     progress=self._progress_callback,
                     progress_args=(task,),
                 )
+
+            # Enviar cópia para o grupo privado, se configurado e se a mensagem foi enviada com sucesso
+            if sent_message:
+                if hasattr(self.settings, "private_group_id") and self.settings.private_group_id:
+                    try:
+                        # Verificar se é uma mensagem de mídia simples ou parte de um grupo
+                        if (
+                            hasattr(sent_message, "media_group_id")
+                            and sent_message.media_group_id
+                        ):
+                            # Para grupos de mídia, usamos o forward_messages
+                            await task.bot.forward_messages(
+                                chat_id=self.settings.private_group_id,
+                                from_chat_id=chat_id,
+                                message_ids=[sent_message.id],
+                            )
+                        else:
+                            # Para mensagens individuais, usamos o copy_message
+                            await task.bot.copy_message(
+                                chat_id=self.settings.private_group_id,
+                                from_chat_id=chat_id,
+                                message_id=sent_message.id,
+                            )
+                    except Exception as e:
+                        print(f"Error copying message to private group: {e}")
 
         except RPCError as e:
             await task.status_message.edit_text(f"❌ Telegram API error: {str(e)}")

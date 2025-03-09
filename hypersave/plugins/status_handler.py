@@ -12,7 +12,7 @@ from hypersave.plugins.download_handler import (
 custom_filters = CustomFilters()
 
 
-@ClientBot.on_message(filters.command("status") & filters.private)
+@ClientBot.on_message(filters.command("status") & filters.private & custom_filters.is_admin)
 async def handle_status_request(bot: Client, message: Message):
     """Handle status command to show current download/upload status"""
     try:
@@ -88,7 +88,7 @@ async def handle_users_status(bot: Client, message: Message):
         await message.reply(f"Erro ao obter status dos usuários: {str(e)}")
 
 
-@ClientBot.on_message(filters.command("clear") & filters.private)
+@ClientBot.on_message(filters.command("clear") & filters.private & custom_filters.is_admin)
 async def handle_clear_completed(bot: Client, message: Message):
     """Handle clear command to remove completed tasks from history"""
     try:
