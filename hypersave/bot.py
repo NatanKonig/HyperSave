@@ -23,6 +23,7 @@ class ClientBot(Client):
             bot_token=settings.bot_token,
             plugins=dict(root="hypersave/plugins/"),
             workdir="./sessions/",
+            max_concurrent_transmissions=10,
         )
 
 
