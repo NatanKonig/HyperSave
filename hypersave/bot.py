@@ -9,6 +9,7 @@ from hypersave.database.database import Database
 from hypersave.logger import logger
 from hypersave.settings import Settings
 from hypersave.utils.clear_folders import clear_and_create_folders
+from hypersave.utils.directory_helper import ensure_directories_exist
 
 uvloop.install()
 
@@ -40,6 +41,7 @@ async def main():
 if __name__ == "__main__":
     try:
         clear_and_create_folders()
+        ensure_directories_exist()
         logger.success("Bot iniciado!")
         asyncio.run(main())
     except Exception as e:
