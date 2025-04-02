@@ -287,6 +287,9 @@ class UploadManager:
             # Prepare media list for the group
             media_list = []
             chat_id = task.original_message.chat.id
+            sent_message_ids = (
+                []
+            )  # Lista para armazenar todos os IDs de mensagens enviadas
 
             # Update status
             status_text = (
@@ -371,7 +374,8 @@ class UploadManager:
                         )
 
             # Send in batches (maximum of 10 per group - Telegram limit)
-            sent_message_ids = []  # Store sent message IDs
+            all_sent_messages = []  # Lista para armazenar todas as mensagens enviadas
+            first_message_id = None  # Primeiro ID de mensagem para encaminhamento
 
             if media_list:
                 total_batches = (len(media_list) + 9) // 10  # Ceiling division
@@ -399,36 +403,68 @@ class UploadManager:
                             chat_id=chat_id, media=batch
                         )
 
-                        # Store sent message IDs
-                        if sent_messages:
-                            for msg in sent_messages:
-                                sent_message_ids.append(msg.id)
+                        # Armazenar todas as mensagens enviadas
+                        all_sent_messages.extend(sent_messages)
 
-                        # Forward to private group if configured
-                        if (
-                            hasattr(self.settings, "private_group_id")
-                            and self.settings.private_group_id
-                        ):
-                            try:
-                                # For media groups, use the first message ID and media_group_id
-                                if sent_messages and len(sent_messages) > 0:
-                                    first_msg = sent_messages[0]
-                                    if first_msg.media_group_id:
-                                        await task.bot.forward_messages(
-                                            chat_id=self.settings.private_group_id,
-                                            from_chat_id=chat_id,
-                                            message_ids=sent_message_ids,
-                                        )
-                            except Exception as e:
-                                logger.error(
-                                    f"Error forwarding media group to private group: {e}"
-                                )
+                        # Armazenar o primeiro ID de mensagem se ainda não tiver sido definido
+                        if sent_messages and not first_message_id:
+                            first_message_id = sent_messages[0].id
+                            first_message = sent_messages[0]
+
+                        # Armazenar IDs para possível uso posterior
+                        for msg in sent_messages:
+                            sent_message_ids.append(msg.id)
+
                     except Exception as e:
                         error_msg = (
                             f"Error sending batch {batch_num}/{total_batches}: {str(e)}"
                         )
                         logger.error(error_msg)
                         await task.original_message.reply(error_msg)
+
+                # Encaminhar para o grupo privado se configurado
+                if (
+                    all_sent_messages
+                    and hasattr(self.settings, "private_group_id")
+                    and self.settings.private_group_id
+                ):
+                    try:
+                        # Verificar se temos um media_group_id
+                        if first_message and first_message.media_group_id:
+                            logger.info(
+                                f"Encaminhando grupo de mídia para o grupo privado usando forward_media_group"
+                            )
+                            # Usar forward_media_group para encaminhar o grupo completo
+                            await task.bot.forward_media_group(
+                                chat_id=self.settings.private_group_id,
+                                from_chat_id=chat_id,
+                                message_id=first_message_id,
+                            )
+                        else:
+                            # Fallback: encaminhar cada mensagem individualmente
+                            logger.info(
+                                f"Encaminhando mensagens individualmente para o grupo privado"
+                            )
+                            for message_id in sent_message_ids:
+                                await task.bot.forward_messages(
+                                    chat_id=self.settings.private_group_id,
+                                    from_chat_id=chat_id,
+                                    message_ids=message_id,
+                                )
+                    except Exception as e:
+                        logger.error(f"Erro ao encaminhar para o grupo privado: {e}")
+                        # Tentar método alternativo
+                        try:
+                            logger.info(
+                                "Tentando método alternativo de encaminhamento usando forward_messages"
+                            )
+                            await task.bot.forward_messages(
+                                chat_id=self.settings.private_group_id,
+                                from_chat_id=chat_id,
+                                message_ids=sent_message_ids,
+                            )
+                        except Exception as e2:
+                            logger.error(f"Também falhou com método alternativo: {e2}")
 
                 # Update final status
                 final_status = (
@@ -689,31 +725,45 @@ class UploadManager:
 
             # Forward to private group if configured and message was sent successfully
             if sent_message:
+                # Encaminhar para o grupo privado, se configurado
                 if (
                     hasattr(self.settings, "private_group_id")
                     and self.settings.private_group_id
                 ):
                     try:
-                        # Check if this is a media group or individual message
+                        # Verificar se esta é uma mensagem de grupo de mídia
                         if (
                             hasattr(sent_message, "media_group_id")
                             and sent_message.media_group_id
                         ):
-                            # For media groups, use forward_messages
-                            await task.bot.forward_messages(
-                                chat_id=self.settings.private_group_id,
-                                from_chat_id=chat_id,
-                                message_ids=[sent_message.id],
+                            logger.info(
+                                f"Enviando mensagem de grupo de mídia para o grupo privado usando forward_media_group"
                             )
-                        else:
-                            # For individual messages, use copy_message
-                            await task.bot.copy_message(
+                            # Usar forward_media_group para encaminhar o grupo completo
+                            await task.bot.forward_media_group(
                                 chat_id=self.settings.private_group_id,
                                 from_chat_id=chat_id,
                                 message_id=sent_message.id,
                             )
+                        else:
+                            # Para mensagens individuais
+                            logger.info(
+                                f"Encaminhando mensagem individual para o grupo privado"
+                            )
+                            await sent_message.forward(
+                                chat_id=self.settings.private_group_id
+                            )
                     except Exception as e:
-                        logger.error(f"Error copying message to private group: {e}")
+                        logger.error(f"Erro ao encaminhar para o grupo privado: {e}")
+                        # Método alternativo
+                        try:
+                            await task.bot.forward_messages(
+                                chat_id=self.settings.private_group_id,
+                                from_chat_id=chat_id,
+                                message_ids=sent_message.id,
+                            )
+                        except Exception as e2:
+                            logger.error(f"Método alternativo também falhou: {e2}")
 
         except RPCError as e:
             logger.error(f"Telegram API error: {str(e)}")
