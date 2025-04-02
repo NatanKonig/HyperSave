@@ -201,6 +201,7 @@ class DownloadManager:
                                 source_message.media_group_id,
                                 task.original_message,
                                 task.status_message,
+                                task.media_captions,  # Passar as legendas capturadas
                             )
                     else:
                         # Uploads individuais para mídias não agrupadas
@@ -344,6 +345,7 @@ class DownloadManager:
             )
 
             output_paths = []
+            captions = []  # Lista para armazenar legendas
 
             # Update status message and track last text
             status_text = (
@@ -360,6 +362,9 @@ class DownloadManager:
             for i, msg in enumerate(media_group_messages):
                 if not msg.media:
                     continue
+
+                # Armazenar a legenda deste item
+                captions.append(msg.caption or "")
 
                 # Update progress with careful tracking of last message
                 new_status = (
@@ -385,6 +390,9 @@ class DownloadManager:
                 file_path = await msg.download(file_name=str(output_path))
 
                 output_paths.append(Path(file_path))
+
+            # Armazenar legendas na task
+            task.media_captions = captions
 
             # Update status with final message
             final_status = f"✅ Media group download completed ({len(output_paths)}/{len(media_group_messages)} files). Queued for upload..."

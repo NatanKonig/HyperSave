@@ -38,3 +38,4 @@ class UploadTask:
     is_media_group: bool = False
     media_group_id: Optional[str] = None
     media_group_files: List[Path] = None
+    media_captions: List[str] = None  # Lista de legendas para grupos de mídia

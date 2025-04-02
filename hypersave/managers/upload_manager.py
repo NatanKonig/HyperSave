@@ -8,6 +8,7 @@ from pyrogram import Client
 from pyrogram.errors import RPCError
 from pyrogram.types import InputMediaPhoto, InputMediaVideo, Message
 
+from hypersave.logger import logger
 from hypersave.models.upload_task import UploadTask
 from hypersave.settings import Settings
 from hypersave.utils.media_processor import (
@@ -16,7 +17,6 @@ from hypersave.utils.media_processor import (
     move_metadata_to_start,
     process_video_thumb,
 )
-from hypersave.logger import logger
 
 
 class UploadManager:
@@ -128,6 +128,7 @@ class UploadManager:
         media_group_id: str,
         original_message: Message,
         status_message: Message,
+        media_captions: List[str] = None,  # Nova lista para legendas
     ) -> str:
         """
         Add a media group upload task to the queue
@@ -139,6 +140,7 @@ class UploadManager:
             media_group_id: Media group identifier
             original_message: User's message that triggered the download
             status_message: Message for status updates
+            media_captions: List of captions for each media item
 
         Returns:
             task_id: Unique identifier for this upload task
@@ -148,9 +150,15 @@ class UploadManager:
 
         # Filter out files that don't exist
         valid_files = []
-        for path in file_paths:
+        valid_captions = []
+        for i, path in enumerate(file_paths):
             if os.path.exists(path):
                 valid_files.append(path)
+                # Adicionar a legenda correspondente se disponível
+                if media_captions and i < len(media_captions):
+                    valid_captions.append(media_captions[i])
+                else:
+                    valid_captions.append("")
             else:
                 logger.warning(f"File not found in media group: {path}")
 
@@ -177,6 +185,7 @@ class UploadManager:
             is_media_group=True,
             media_group_id=media_group_id,
             media_group_files=valid_files,
+            media_captions=valid_captions,  # Armazenar as legendas
         )
 
         # Put task in queue
@@ -298,14 +307,23 @@ class UploadManager:
 
                 file_ext = file_path.suffix.lower()
 
+                # Pegar a legenda específica para este item
+                caption = (
+                    task.media_captions[i]
+                    if task.media_captions and i < len(task.media_captions)
+                    else ""
+                )
+
                 # Process based on file type
                 if file_ext in [".jpg", ".jpeg", ".png"]:
                     # Add as photo - ensure correct dimensions
                     thumb_info = f"Processing photo {i+1}/{len(task.media_group_files)}"
                     logger.info(thumb_info)
 
-                    # Add directly - we'll handle any dimension issues later if needed
-                    media_list.append(InputMediaPhoto(media=str(file_path)))
+                    # Add with caption
+                    media_list.append(
+                        InputMediaPhoto(media=str(file_path), caption=caption)
+                    )
 
                 elif file_ext in [".mp4", ".avi", ".mov", ".mkv"]:
                     try:
@@ -331,6 +349,7 @@ class UploadManager:
                                     duration=duration,
                                     width=width,
                                     height=height,
+                                    caption=caption,  # Incluir a legenda
                                 )
                             )
                         else:
@@ -341,12 +360,15 @@ class UploadManager:
                                     duration=duration,
                                     width=width,
                                     height=height,
+                                    caption=caption,  # Incluir a legenda
                                 )
                             )
                     except Exception as e:
                         logger.error(f"Error processing video in media group: {e}")
                         # Try adding without processing
-                        media_list.append(InputMediaVideo(media=str(file_path)))
+                        media_list.append(
+                            InputMediaVideo(media=str(file_path), caption=caption)
+                        )
 
             # Send in batches (maximum of 10 per group - Telegram limit)
             sent_message_ids = []  # Store sent message IDs

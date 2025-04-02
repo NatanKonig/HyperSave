@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from pyrogram import Client
 from pyrogram.types import Message
@@ -38,3 +38,6 @@ class DownloadTask:
     # Media group info
     is_media_group: bool = False
     media_group_id: Optional[str] = None
+
+    # Lista para armazenar legendas de cada item em um grupo de mídia
+    media_captions: List[str] = None
