@@ -25,7 +25,7 @@ download_manager.start()
 upload_manager.start()
 
 
-@ClientBot.on_message(filters.regex(r"https://t\.me/.+/.+") & filters.private)
+@ClientBot.on_message(filters.regex(r"https?://t\.me/.+/.+(?:/.+)?") & filters.private)
 async def handle_download_request(bot: Client, message: Message):
     """Handle messages containing Telegram links for download"""
     try:

@@ -50,21 +50,39 @@ class DownloadManager:
             except asyncio.CancelledError:
                 pass
 
-    def parse_telegram_url(self, url: str) -> Tuple[str, int]:
-        """Parse Telegram URL to extract chat ID and message ID"""
+    def parse_telegram_url(self, url: str) -> Tuple[str, int, Optional[int]]:
+        """Parse Telegram URL to extract chat ID, message ID and optional topic/thread ID.
+
+        Supports formats:
+        - Public channel/topic: t.me/channel_name/123
+        - Private channel/group: t.me/c/<chat_numeric_id>/123
+        - Topic message: t.me/c/<chat_numeric_id>/<topic_id>/<message_id>
+        Returns (chat_id, message_id, message_thread_id)
+        message_thread_id will be None when not present.
+        """
         parsed_url = urlparse(url)
         path_parts = parsed_url.path.strip("/").split("/")
 
-        if len(path_parts) >= 3 and path_parts[0] == "c":
-            # Private channel format: t.me/c/1234567890/123
-            chat_id = int("-100" + path_parts[1])
-            message_id = int(path_parts[2])
-            return chat_id, message_id
+        # Private channel/group URLs start with 'c'
+        if len(path_parts) >= 1 and path_parts[0] == "c":
+            # t.me/c/<chat_id>/<message_id>
+            # or t.me/c/<chat_id>/<topic_id>/<message_id>
+            if len(path_parts) >= 4:
+                chat_id = int("-100" + path_parts[1])
+                message_thread_id = int(path_parts[2])
+                message_id = int(path_parts[3])
+                return chat_id, message_id, message_thread_id
+            elif len(path_parts) >= 3:
+                chat_id = int("-100" + path_parts[1])
+                message_id = int(path_parts[2])
+                return chat_id, message_id, None
+            else:
+                raise ValueError("Invalid private Telegram URL format")
         elif len(path_parts) >= 2:
-            # Public channel format: t.me/channel_name/123
+            # Public channel: t.me/channel_name/123
             chat_id = path_parts[0]
             message_id = int(path_parts[1])
-            return chat_id, message_id
+            return chat_id, message_id, None
         else:
             raise ValueError("Invalid Telegram URL format")
 
@@ -85,8 +103,8 @@ class DownloadManager:
             task_id: Unique identifier for this download task
         """
         try:
-            # Parse chat_id and message_id from URL
-            chat_id, message_id = self.parse_telegram_url(url)
+            # Parse chat_id, message_id and optional thread id from URL
+            chat_id, message_id, message_thread_id = self.parse_telegram_url(url)
 
             # Create a unique task ID
             task_id = f"{user_id}_{chat_id}_{message_id}_{int(time())}"
@@ -101,6 +119,7 @@ class DownloadManager:
                 user_client=user_client,
                 chat_id=chat_id,
                 message_id=message_id,
+                message_thread_id=message_thread_id,
                 original_message=message,
                 status_message=status_message,
                 bot=bot,
@@ -157,7 +176,10 @@ class DownloadManager:
                 # Mark download start time
                 task.start_time = time()
 
-                # Check if message is a media group
+                # Fetch the source message
+                # Note: For forum topics, Pyrogram's get_messages works without extra params.
+                # The topic_id in the URL is used to construct the correct chat/message reference,
+                # but get_messages() only needs chat_id and message_id.
                 source_message = await task.user_client.get_messages(
                     task.chat_id, task.message_id
                 )
